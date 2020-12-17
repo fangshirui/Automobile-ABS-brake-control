@@ -15,7 +15,7 @@
 class ABSExperimentTable {
 
 public:
-    // 编码器码盘 40ms的脉冲数,每5ms变化一次，40ms后会归零。重新变化。
+    // 电机40ms的脉冲数,每5ms变化一次，40ms后会归零。重新变化。
     int pulse_motor;
 };
 
