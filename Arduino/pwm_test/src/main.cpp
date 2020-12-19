@@ -1,19 +1,20 @@
-#include <ABSExperimentTable/ABSExperimentTable.h>
+#include <ABSExperimentTable.h>
 #include <Arduino.h>
-#include <MsTimer2/MsTimer2.h>
+#include <MsTimer2.h>
 // 制动器力矩输出端口 5  输出pwm信号 0-5v
 #define BRAKINGINPUT 5
 
-// 力矩检测端口  0 - 5v  对应  0 - 500NM
-#define TORQUE 3
+// 力矩检测端口  0v  -> 2.5v  -> 5v  对应  -500NM  -> 0 -> 500NM
+#define TORQUE A3
 
 // 码盘中断端口号  用于测速
 #define R_INTR 2 // 自带的外部中断0 ，优先级很高，端口在D2
 #define L_INTR 4 // 用户设定外部中断， 端口在D4
 
-// const double BIZHI = 1.875; // 640 个脉冲 40ms 对应 1200r/min
-// 1.8725 * 59.8 / 94.8 得来的
-const double SPEED_COEF = 1.1828;
+// 16个脉冲 40ms 对应 60 r/min
+// 比值为 3.75 1个脉冲对应 3.75 r/min
+// 3.75 * 60 / 95 得来的
+const double SPEED_COEF = 2.3685;
 
 ABSExperimentTable abs_table;
 
@@ -21,13 +22,13 @@ ABSExperimentTable abs_table;
 volatile int pulse = 0;
 
 // 每5ms变化一次，记录当前周期总脉冲数
-int current_cycle_total_pulse = 0;
+volatile int current_cycle_total_pulse = 0;
 
 // 速度环, 设置测速周期为40ms, 这里就是当speedcc== 8 时，计算速度
-int speedcc = 0;
+volatile int speedcc = 0;
 
 // 测试变量  电机 40ms 的脉冲数， 每40ms 变化一次
-int speed_pulse = 0;
+volatile int speed_pulse = 0;
 
 // 转速 r/min
 double speed = 0;
@@ -67,7 +68,8 @@ void inter()
     speedcc++;
     abs_table.pulse_motor += current_cycle_total_pulse;
 
-    if (speedcc >= 8) {
+    if (speedcc >= 8)
+    {
         // 此时已经过了40ms
         speedcc = 0;
         speed_pulse = abs_table.pulse_motor;
@@ -85,7 +87,7 @@ void setup()
     pinMode(R_INTR, INPUT_PULLUP);
 
     // 开启串口
-    Serial.begin(38400);
+    Serial.begin(9600);
 
     delay(50);
 
@@ -93,12 +95,7 @@ void setup()
     MsTimer2::start();
 
     // 设定外部中断判断信息  上升沿
-    attachInterrupt(0, pulse_plus, CHANGE);
-
-    /**
-     * 力矩检测部分
-     */
-    pinMode(TORQUE, INPUT);
+    attachInterrupt(0, pulse_plus, RISING);
 }
 void loop()
 {
@@ -106,11 +103,10 @@ void loop()
     // speed 是 40ms 的脉冲数 乘以 转速系数得到
     speed = SPEED_COEF * (double)speed_pulse;
     str_speed = dToStr(speed);
-
-    // 力矩 =  读数 * 500 / 255 = 读数 * 1.9608
-    braking_torque = (double)analogRead(TORQUE) * 1.9608;
-
     Serial.println("Speed:r/min: " + str_speed);
+
+    // 力矩 = x  - 500
+    braking_torque = (double)analogRead(TORQUE) - 500;
     Serial.println("Torque:N*m" + dToStr(braking_torque));
 
     delay(1000);
