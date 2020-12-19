@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <MsTimer2.h>
 // 制动器力矩输出端口 5  输出pwm信号 0-5v
-#define BRAKINGINPUT 5
+#define BRAKEOUTPUT 5
 
 // 力矩检测端口  0v  -> 2.5v  -> 5v  对应  -500NM  -> 0 -> 500NM
 #define TORQUE A3
@@ -33,7 +33,7 @@ volatile int speed_pulse = 0;
 // 转速 r/min
 double speed = 0;
 // 转速  字符串
-String str_speed;
+String upload_string;
 
 // 力矩 N*m
 double braking_torque = 0;
@@ -68,12 +68,22 @@ void inter()
     speedcc++;
     abs_table.pulse_motor += current_cycle_total_pulse;
 
-    if (speedcc >= 8)
-    {
+    if (speedcc >= 8) {
         // 此时已经过了40ms
         speedcc = 0;
         speed_pulse = abs_table.pulse_motor;
         abs_table.pulse_motor = 0;
+
+        // 上传数据  每隔 40ms
+        // speed 是 40ms 的脉冲数 乘以 转速系数得到
+        speed = SPEED_COEF * (double)speed_pulse;
+
+        // 力矩 = x  - 500
+        braking_torque = (double)analogRead(TORQUE) - 500;
+
+        // speed,braking_torque  单位  rpm, N*m
+        upload_string = dToStr(speed) + "," + dToStr(braking_torque);
+        Serial.println(upload_string);
     }
 }
 
@@ -96,18 +106,74 @@ void setup()
 
     // 设定外部中断判断信息  上升沿
     attachInterrupt(0, pulse_plus, RISING);
+
+    // 设置pwm端口 输出 0 - 5v 对应 0 - 48v
+    pinMode(BRAKEOUTPUT, OUTPUT);
 }
+
+/**
+ * 接收指令代码
+ */
+boolean newLineReceived = false;
+String inputString = "";
+int mark = 2;
+int incomingByte;
+int num1 = 0;
+boolean startBit = false;
+
 void loop()
 {
-    // 上传数据
-    // speed 是 40ms 的脉冲数 乘以 转速系数得到
-    speed = SPEED_COEF * (double)speed_pulse;
-    str_speed = dToStr(speed);
-    Serial.println("Speed:r/min: " + str_speed);
+    if (newLineReceived) {
+        if (inputString[1] == '1') {
+            mark = 1;
+        } else if (inputString[1] == '0') {
+            mark = 0;
+        } else {
+            mark = 2;
+        }
+    }
 
-    // 力矩 = x  - 500
-    braking_torque = (double)analogRead(TORQUE) - 500;
-    Serial.println("Torque:N*m" + dToStr(braking_torque));
+    if (mark == 0) {
+        // 制动器开启最大制动力 48v
+        //  "$0#"
+        analogWrite(BRAKEOUTPUT, 255);
+    } else if (mark == 1) {
+        // 制动器开启自动制动模式
+        //  "$1#"
 
-    delay(1000);
+    } else {
+        // 制动器关闭模式
+        analogWrite(BRAKEOUTPUT, 0);
+    }
+
+    inputString = "";
+    newLineReceived = false;
+}
+
+void serialEvent()
+{
+    while (Serial.available()) { // 放在缓存区
+        incomingByte = Serial.read(); // 一个字节的读
+        if (incomingByte == '$') {
+            num1 = 0;
+            startBit = true;
+        }
+
+        if (startBit == true) {
+            num1++;
+            inputString += (char)incomingByte;
+        }
+
+        if (startBit == true && incomingByte == '#') {
+            newLineReceived = true;
+            startBit = false;
+        }
+
+        if (num1 > 3) {
+            num1 = 0;
+            startBit = false;
+            newLineReceived = false;
+            inputString = "";
+        }
+    }
 }
