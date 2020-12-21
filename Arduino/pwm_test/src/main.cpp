@@ -42,7 +42,7 @@ double braking_torque = 0;
 // 制动器工作模式 0 空闲模式
 int mark = 0;
 
-// 软串口参数 mySerial  Rx, Tx
+// 软串口参数 mySerial  Rx = 8, Tx = 9
 SoftwareSerial mySerial(8, 9);
 
 // 硬件中断调用函数
@@ -88,7 +88,6 @@ void setup() {
     pinMode(R_INTR, INPUT_PULLUP);
 
     // 开启串口
-    Serial.begin(9600);
     mySerial.begin(9600);
 
     delay(50);
