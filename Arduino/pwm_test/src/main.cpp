@@ -39,7 +39,9 @@ String upload_string;
 // 力矩 N*m
 double braking_torque = 0;
 
-// 制动器工作模式 0 空闲模式
+
+
+// 制动器工作模式 0 空闲模式  1 最大制动力  2 自由设定
 int mark = 0;
 
 // 软串口参数 mySerial  Rx = 8, Tx = 9
@@ -76,6 +78,9 @@ void inter() {
         speedcc = 0;
         speed_pulse = abs_table.pulse_motor;
         abs_table.pulse_motor = 0;
+
+        mySerial.println(upload_string);
+        mySerial.println(millis());
     }
 }
 
@@ -108,7 +113,6 @@ void setup() {
 
 int incomingByte;
 
-
 void loop() {
     if (mySerial.available()) {
         incomingByte = mySerial.read();
@@ -134,6 +138,7 @@ void loop() {
         analogWrite(BRAKEOUTPUT, 255);
     }
     else {
+        abs_table.pwm += 20;
     }
 
 
@@ -145,9 +150,9 @@ void loop() {
     braking_torque = (double)analogRead(TORQUE) - 510;
 
     // speed,braking_torque  单位  rpm, N*m
-    upload_string = dToStr(speed) + "," + dToStr(braking_torque);
-    mySerial.println(upload_string);
+    upload_string = dToStr(speed) + "," + dToStr(braking_torque) + "," + dToStr(abs_table.pwm);
+
 
     // 必须要有的延迟
-    delay(1000);
+    delay(20);
 }
