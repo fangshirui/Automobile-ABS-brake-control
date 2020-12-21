@@ -1,6 +1,7 @@
 #include <ABSExperimentTable.h>
 #include <Arduino.h>
 #include <MsTimer2.h>
+#include <SoftwareSerial.h>
 // 制动器力矩输出端口 5  输出pwm信号 0-5v
 #define BRAKEOUTPUT 5
 
@@ -38,21 +39,24 @@ String upload_string;
 // 力矩 N*m
 double braking_torque = 0;
 
+// 制动器工作模式 0 空闲模式
+int mark = 0;
+
+// 软串口参数 mySerial  Rx, Tx
+SoftwareSerial mySerial(8, 9);
+
 // 硬件中断调用函数
-void pulse_plus()
-{
+void pulse_plus() {
     pulse++;
 }
 
-String dToStr(double raw_data)
-{
+String dToStr(double raw_data) {
     char char_data[7];
     dtostrf(raw_data, 3, 2, char_data);
     return (String)char_data;
 }
 
-void countpulse()
-{
+void countpulse() {
     // 每个周期 结束时统计当前周期总脉冲数量
     current_cycle_total_pulse = pulse;
 
@@ -60,8 +64,7 @@ void countpulse()
     pulse = 0;
 }
 // 定时中断调用函数 每5ms
-void inter()
-{
+void inter() {
     sei();
     countpulse();
 
@@ -73,31 +76,20 @@ void inter()
         speedcc = 0;
         speed_pulse = abs_table.pulse_motor;
         abs_table.pulse_motor = 0;
-
-        // 上传数据  每隔 40ms
-        // speed 是 40ms 的脉冲数 乘以 转速系数得到
-        speed = SPEED_COEF * (double)speed_pulse;
-
-        // 力矩 = x  - 500
-        braking_torque = (double)analogRead(TORQUE) - 500;
-
-        // speed,braking_torque  单位  rpm, N*m
-        upload_string = dToStr(speed) + "," + dToStr(braking_torque);
-        Serial.println(upload_string);
     }
 }
 
-void setup()
-{
+void setup() {
 
     /**
-     * 测速部分 
+     * 测速部分
      */
-    // 测速码盘 端口号 设定
+     // 测速码盘 端口号 设定
     pinMode(R_INTR, INPUT_PULLUP);
 
     // 开启串口
     Serial.begin(9600);
+    mySerial.begin(9600);
 
     delay(50);
 
@@ -114,66 +106,49 @@ void setup()
 /**
  * 接收指令代码
  */
-boolean newLineReceived = false;
-String inputString = "";
-int mark = 2;
-int incomingByte;
-int num1 = 0;
-boolean startBit = false;
 
-void loop()
-{
-    if (newLineReceived) {
-        if (inputString[1] == '1') {
-            mark = 1;
-        } else if (inputString[1] == '0') {
+int incomingByte;
+
+
+void loop() {
+    if (mySerial.available()) {
+        incomingByte = mySerial.read();
+
+        if (incomingByte == '0') {
             mark = 0;
-        } else {
+        }
+        else if (incomingByte == '1') {
+            mark = 1;
+        }
+        else {
             mark = 2;
         }
     }
 
     if (mark == 0) {
-        // 制动器开启最大制动力 48v
-        //  "$0#"
-        analogWrite(BRAKEOUTPUT, 255);
-    } else if (mark == 1) {
-        // 制动器开启自动制动模式
-        //  "$1#"
-
-    } else {
-        // 制动器关闭模式
+        // 制动器关闭模式 "0"
         analogWrite(BRAKEOUTPUT, 0);
     }
-
-    inputString = "";
-    newLineReceived = false;
-}
-
-void serialEvent()
-{
-    while (Serial.available()) { // 放在缓存区
-        incomingByte = Serial.read(); // 一个字节的读
-        if (incomingByte == '$') {
-            num1 = 0;
-            startBit = true;
-        }
-
-        if (startBit == true) {
-            num1++;
-            inputString += (char)incomingByte;
-        }
-
-        if (startBit == true && incomingByte == '#') {
-            newLineReceived = true;
-            startBit = false;
-        }
-
-        if (num1 > 3) {
-            num1 = 0;
-            startBit = false;
-            newLineReceived = false;
-            inputString = "";
-        }
+    else if (mark == 1) {
+        // 制动器开启最大制动力 48v
+        //  "1"
+        analogWrite(BRAKEOUTPUT, 255);
     }
+    else {
+    }
+
+
+    // 上传数据 ======= 每隔 50ms  ==========
+    // speed 是 40ms 的脉冲数 乘以 转速系数得到
+    speed = SPEED_COEF * (double)speed_pulse;
+
+    // 力矩 = x  - 500
+    braking_torque = (double)analogRead(TORQUE) - 510;
+
+    // speed,braking_torque  单位  rpm, N*m
+    upload_string = dToStr(speed) + "," + dToStr(braking_torque);
+    mySerial.println(upload_string);
+
+    // 必须要有的延迟
+    delay(1000);
 }
