@@ -111,36 +111,29 @@ void setup() {
  * 接收指令代码
  */
 
-int incomingByte;
 
 void loop() {
     if (mySerial.available()) {
-        incomingByte = mySerial.read();
-
-        if (incomingByte == '0') {
-            mark = 0;
-        }
-        else if (incomingByte == '1') {
-            mark = 1;
-        }
-        else {
-            mark = 2;
-        }
+        mark = mySerial.read();
     }
 
-    if (mark == 0) {
-        // 制动器关闭模式 "0"
-        analogWrite(BRAKEOUTPUT, 0);
-    }
-    else if (mark == 1) {
-        // 制动器开启最大制动力 48v
-        //  "1"
-        analogWrite(BRAKEOUTPUT, 255);
-    }
-    else {
+    switch (mark) {
+    case '0':
+        abs_table.pwm = 0;
+        break;
+    case '1':
+        abs_table.pwm = 255;
+        break;
+    case '2':
         abs_table.pwm += 20;
+        break;
+    case '3':
+        abs_table.pwm -= 20;
+    default:
+        abs_table.pwm = 0;
     }
 
+    analogWrite(BRAKEOUTPUT, abs_table.pwm);
 
     // 上传数据 ======= 每隔 50ms  ==========
     // speed 是 40ms 的脉冲数 乘以 转速系数得到
