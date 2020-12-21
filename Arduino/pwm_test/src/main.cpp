@@ -32,11 +32,13 @@ volatile int speedcc = 0;
 volatile int speed_pulse = 0;
 
 // 转速 r/min
+double speedOld = 0;
 double speed = 0;
 // 转速  字符串
 String upload_string;
 
 // 力矩 N*m
+double braking_torque_old = 0;
 double braking_torque = 0;
 
 
@@ -79,8 +81,7 @@ void inter() {
         speed_pulse = abs_table.pulse_motor;
         abs_table.pulse_motor = 0;
 
-        mySerial.println(upload_string);
-        mySerial.println(millis());
+
     }
 }
 
@@ -93,7 +94,7 @@ void setup() {
     pinMode(R_INTR, INPUT_PULLUP);
 
     // 开启串口
-    mySerial.begin(9600);
+    mySerial.begin(19200);
 
     delay(50);
 
@@ -111,41 +112,58 @@ void setup() {
  * 接收指令代码
  */
 
-
+bool isNewLine = false;
+bool isBraking = false;
 void loop() {
-    if (mySerial.available()) {
+
+    while (mySerial.available()) {
         mark = mySerial.read();
+        isNewLine = true;
     }
 
-    switch (mark) {
-    case '0':
-        abs_table.pwm = 0;
-        break;
-    case '1':
-        abs_table.pwm = 255;
-        break;
-    case '2':
-        abs_table.pwm += 20;
-        break;
-    case '3':
-        abs_table.pwm -= 20;
-    default:
-        abs_table.pwm = 0;
+    if (isNewLine) {
+        switch (mark) {
+        case '0':
+            // 关闭制动模式
+            analogWrite(BRAKEOUTPUT, 0);
+            isBraking = false;
+            break;
+        case '1':
+            // 开启制动模式
+            analogWrite(BRAKEOUTPUT, abs_table.pwm);
+            isBraking = true;
+            break;
+        case '2':
+            abs_table.pwm += 20;
+            break;
+        case '3':
+            abs_table.pwm -= 20;
+            break;
+        default:
+            break;
+        }
+        isNewLine = false;
     }
 
-    analogWrite(BRAKEOUTPUT, abs_table.pwm);
 
     // 上传数据 ======= 每隔 50ms  ==========
     // speed 是 40ms 的脉冲数 乘以 转速系数得到
     speed = SPEED_COEF * (double)speed_pulse;
+    speed = speedOld * 0.7 + speed * 0.3;
+    speedOld = speed;
 
     // 力矩 = x  - 500
-    braking_torque = (double)analogRead(TORQUE) - 510;
+    braking_torque = (double)analogRead(TORQUE) - 525;
+    braking_torque = braking_torque_old * 0.7 + braking_torque * 0.3;
+    braking_torque_old = braking_torque;
 
     // speed,braking_torque  单位  rpm, N*m
-    upload_string = dToStr(speed) + "," + dToStr(braking_torque) + "," + dToStr(abs_table.pwm);
+    upload_string = dToStr(speed) + "," + dToStr(braking_torque) + "," + dToStr(abs_table.pwm) + ",";
+    mySerial.print(upload_string);
+    mySerial.println(isBraking);
+    // mySerial.println(millis());
 
 
     // 必须要有的延迟
-    delay(20);
+    delay(87);
 }
