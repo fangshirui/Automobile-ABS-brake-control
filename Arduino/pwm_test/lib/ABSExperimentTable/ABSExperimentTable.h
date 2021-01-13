@@ -20,6 +20,8 @@ public:
 
     // 输出给制动器的pwm 0-255 每20 对应 0.1A 电流
     int pwm = 0;
+
+    bool isBraking = false;
 };
 
 #endif

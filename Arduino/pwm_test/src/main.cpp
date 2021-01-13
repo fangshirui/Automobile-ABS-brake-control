@@ -25,8 +25,6 @@ volatile int pulse = 0;
 // 每5ms变化一次，记录当前周期总脉冲数
 volatile int current_cycle_total_pulse = 0;
 
-// 速度环, 设置测速周期为40ms, 这里就是当speedcc== 8 时，计算速度
-volatile int speedcc = 0;
 
 // 测试变量  电机 40ms 的脉冲数， 每40ms 变化一次
 volatile int speed_pulse = 0;
@@ -67,12 +65,19 @@ void countpulse() {
     // 归零
     pulse = 0;
 }
+
 // 定时中断调用函数 每5ms
+
+// 速度环, 设置测速周期为40ms, 这里就是当speedcc == 8 时，计算速度
+volatile int speedcc = 0;
+// 上传计数器
+int upload_count = 0;
 void inter() {
     sei();
     countpulse();
 
     speedcc++;
+    upload_count++;
     abs_table.pulse_motor += current_cycle_total_pulse;
 
     if (speedcc >= 8) {
@@ -80,9 +85,15 @@ void inter() {
         speedcc = 0;
         speed_pulse = abs_table.pulse_motor;
         abs_table.pulse_motor = 0;
-
-
     }
+
+    if (upload_count >= 40) {
+        // 200ms 定时发送
+        mySerial.print(upload_string);
+        mySerial.println(abs_table.isBraking);
+        upload_count = 0;
+    }
+
 }
 
 void setup() {
@@ -113,25 +124,24 @@ void setup() {
  */
 
 bool isNewLine = false;
-bool isBraking = false;
+
 void loop() {
 
     while (mySerial.available()) {
         mark = mySerial.read();
         isNewLine = true;
     }
-
     if (isNewLine) {
         switch (mark) {
         case '0':
             // 关闭制动模式
             analogWrite(BRAKEOUTPUT, 0);
-            isBraking = false;
+            abs_table.isBraking = false;
             break;
         case '1':
             // 开启制动模式
             analogWrite(BRAKEOUTPUT, abs_table.pwm);
-            isBraking = true;
+            abs_table.isBraking = true;
             break;
         case '2':
             abs_table.pwm += 20;
@@ -144,7 +154,6 @@ void loop() {
         }
         isNewLine = false;
     }
-
 
     // 上传数据 ======= 每隔 50ms  ==========
     // speed 是 40ms 的脉冲数 乘以 转速系数得到
@@ -159,11 +168,7 @@ void loop() {
 
     // speed,braking_torque  单位  rpm, N*m
     upload_string = dToStr(speed) + "," + dToStr(braking_torque) + "," + dToStr(abs_table.pwm) + ",";
-    mySerial.print(upload_string);
-    mySerial.println(isBraking);
-    // mySerial.println(millis());
-
 
     // 必须要有的延迟
-    delay(87);
+    delay(50);
 }
